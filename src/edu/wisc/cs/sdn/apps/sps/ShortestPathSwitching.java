@@ -139,7 +139,6 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 			
 			/*****************************************************************/
 			/* TODO: Update routing: add rules to route to new host          */
-			clearRules();
 			updateRoutingTable();
 			/*****************************************************************/
 		}
@@ -164,7 +163,6 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: remove rules to route to host               */
-		clearRules();
 		updateRoutingTable();
 		/*********************************************************************/
 	}
@@ -193,7 +191,6 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change rules to route to host               */
-		clearRules();
 		updateRoutingTable();
 		/*********************************************************************/
 	}
@@ -210,7 +207,6 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		clearRules();
 		updateRoutingTable();
 		/*********************************************************************/
 	}
@@ -227,7 +223,6 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		clearRules();
 		updateRoutingTable();
 		/*********************************************************************/
 	}
@@ -259,7 +254,6 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		clearRules();
 		updateRoutingTable();
 		/*********************************************************************/
 	}
@@ -293,6 +287,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 	 * Update routing table when changes happen
 	 */
 	public void updateRoutingTable() {
+		clearRules();
+
 		for (Host srcHost: getHosts()) {
 			if (!srcHost.isAttachedToSwitch()) {
 				continue;
@@ -314,19 +310,16 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 				List<Link> shortestPaths = pather.getShortestPathToDstHost(dstHost.getSwitch().getId());
 
 				for (Link link: shortestPaths) {
-					for (IOFSwitch sw: getSwitches().values()) {
-						if (sw.getId() == link.getSrc()) {
-							OFAction action = new OFActionOutput(link.getSrcPort());
-							OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
-							SwitchCommands.installRule(
-									sw,
-									table,
-									SwitchCommands.DEFAULT_PRIORITY,
-									match,
-									List.of(instruction)
-							);
-						}
-					}
+					IOFSwitch sw = getSwitches().get(link.getSrc());
+					OFAction action = new OFActionOutput(link.getSrcPort());
+					OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
+					SwitchCommands.installRule(
+							sw,
+							table,
+							SwitchCommands.DEFAULT_PRIORITY,
+							match,
+							List.of(instruction)
+					);
 				}
 
 			}
