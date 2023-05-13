@@ -1,13 +1,17 @@
 package edu.wisc.cs.sdn.apps.sps;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import edu.wisc.cs.sdn.apps.util.SwitchCommands;
+import net.floodlightcontroller.packet.Ethernet;
+import net.floodlightcontroller.util.MACAddress;
+import org.apache.derby.iapi.util.ByteArray;
+import org.openflow.protocol.OFMatch;
+import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.protocol.instruction.OFInstruction;
+import org.openflow.protocol.instruction.OFInstructionApplyActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -135,7 +139,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 			
 			/*****************************************************************/
 			/* TODO: Update routing: add rules to route to new host          */
-			
+			clearRules();
+			updateRoutingTable();
 			/*****************************************************************/
 		}
 	}
@@ -159,7 +164,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: remove rules to route to host               */
-		
+		clearRules();
+		updateRoutingTable();
 		/*********************************************************************/
 	}
 
@@ -187,7 +193,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change rules to route to host               */
-		
+		clearRules();
+		updateRoutingTable();
 		/*********************************************************************/
 	}
 	
@@ -203,7 +210,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-
+		clearRules();
+		updateRoutingTable();
 		/*********************************************************************/
 	}
 
@@ -219,7 +227,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		
+		clearRules();
+		updateRoutingTable();
 		/*********************************************************************/
 	}
 
@@ -250,8 +259,88 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		
+		clearRules();
+		updateRoutingTable();
 		/*********************************************************************/
+	}
+
+	/**
+	 * connect the host to its default switch
+	 * @param host
+	 */
+	private void updateDefaultSwitch(Host host) {
+		if (!host.isAttachedToSwitch() || host.getPort() == null) {
+			return;
+		}
+
+		OFMatch match = new OFMatch()
+				.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
+				.setDataLayerDestination(MACAddress.valueOf(host.getMACAddress()).toString());
+
+		OFAction action = new OFActionOutput(host.getPort());
+		OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
+
+		SwitchCommands.installRule(
+				host.getSwitch(),
+				this.table,
+				SwitchCommands.DEFAULT_PRIORITY,
+				match,
+				List.of(instruction)
+		);
+	}
+
+	/**
+	 * Update routing table when changes happen
+	 */
+	public void updateRoutingTable() {
+		for (Host srcHost: getHosts()) {
+			if (!srcHost.isAttachedToSwitch()) {
+				continue;
+			}
+
+			updateDefaultSwitch(srcHost);
+
+			ShortestPather pather = new ShortestPather();
+			pather.runBellmanFord(srcHost.getSwitch(), getLinks(), getSwitches());
+
+			for (Host dstHost: getHosts()) {
+				if (!dstHost.isAttachedToSwitch() || srcHost.equals(dstHost)) {
+					continue;
+				}
+
+				OFMatch match = new OFMatch()
+						.setDataLayerType(Ethernet.TYPE_IPv4)
+						.setDataLayerDestination(MACAddress.valueOf(dstHost.getMACAddress()).toString());
+				List<Link> shortestPaths = pather.getShortestPathToDstHost(dstHost.getSwitch().getId());
+
+				for (Link link: shortestPaths) {
+					for (IOFSwitch sw: getSwitches().values()) {
+						if (sw.getId() == link.getSrc()) {
+							OFAction action = new OFActionOutput(link.getSrcPort());
+							OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
+							SwitchCommands.installRule(
+									sw,
+									this.table,
+									SwitchCommands.DEFAULT_PRIORITY,
+									match,
+									List.of(instruction)
+							);
+						}
+					}
+				}
+
+			}
+
+		}
+	}
+
+	/**
+	 * clear all rules in switches.
+	 */
+	private void clearRules() {
+		for (IOFSwitch sw: getSwitches().values()) {
+			sw.clearAllFlowMods();
+		}
 	}
 
 	/**
