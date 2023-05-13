@@ -282,7 +282,7 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 
 		SwitchCommands.installRule(
 				host.getSwitch(),
-				this.table,
+				table,
 				SwitchCommands.DEFAULT_PRIORITY,
 				match,
 				List.of(instruction)
@@ -320,7 +320,7 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 							OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
 							SwitchCommands.installRule(
 									sw,
-									this.table,
+									table,
 									SwitchCommands.DEFAULT_PRIORITY,
 									match,
 									List.of(instruction)
