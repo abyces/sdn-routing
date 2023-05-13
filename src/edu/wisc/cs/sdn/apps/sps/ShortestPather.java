@@ -15,11 +15,11 @@ public class ShortestPather {
     private static final double WEIGHT = 1.0;
     private static final double EPSILON = 1E-14;
 
-    private Map<Long, Double> distTo;
-    private Map<Long, Link> edgeTo;
-    private Set<Long> onQueue;
-    private Queue<Long> queue;
-    private Map<Long, ArrayList<Link>> network;   // topological structure of sdn
+    private final Map<Long, Double> distTo;
+    private final Map<Long, Link> edgeTo;
+    private final Set<Long> onQueue;
+    private final Queue<Long> queue;
+    private final Map<Long, ArrayList<Link>> network;   // topological structure of sdn
 
     public ShortestPather() {
         distTo = new HashMap<>();
