@@ -267,6 +267,41 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 	}
 
 	/**
+	 * this class uses bellman-ford for shortest path in directed graph,
+	 * which is implemented under guide of
+	 *      - https://www.programiz.com/dsa/bellman-ford-algorithm
+	 */
+	public Map<Long, Integer> getShortestPaths(IOFSwitch srcSwitch, Collection<Link> links, Map<Long, IOFSwitch> switches) {
+		int WEIGHT = 1;
+		Map<Long, Integer> distTo = new HashMap<Long, Integer>();
+		Map<Long, Integer> edgeTo = new HashMap<Long, Integer>();
+
+		// init distTo
+		for (long sId: switches.keySet()) {
+			distTo.put(sId, Integer.MAX_VALUE - 1);
+		}
+		distTo.put(srcSwitch.getId(), 0);
+
+		for (int v = 0; v < switches.size(); v++) {
+			// relax
+			for (Link link: links) {
+				long src = link.getSrc(), dst = link.getDst();
+				if (distTo.get(dst) > distTo.get(src) + WEIGHT) {
+					distTo.put(dst, distTo.get(src) + WEIGHT);
+					edgeTo.put(dst, link.getDstPort());
+				}
+
+				if (distTo.get(src) > distTo.get(dst) + WEIGHT) {
+					distTo.put(src, distTo.get(dst) + WEIGHT);
+					edgeTo.put(src, link.getSrcPort());
+				}
+			}
+		}
+
+		return edgeTo;
+	}
+
+	/**
 	 * Update routing table when changes happen
 	 */
 	public void updateRoutingTable(Host host) {
@@ -279,8 +314,7 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		log.info(String.format("Host %s, ip: %s, sw: %d, rules begin to updated.",
 				host.getName(), host.getIPv4Address(), host.getSwitch().getId()));
 
-		ShortestPathCalculator spCalculator = new ShortestPathCalculator();
-		Map<Long, Integer> shortestPaths = spCalculator.getShortestPaths(host.getSwitch(), getLinks(), getSwitches());
+		Map<Long, Integer> shortestPaths = getShortestPaths(host.getSwitch(), getLinks(), getSwitches());
 		shortestPaths.put(host.getSwitch().getId(), host.getPort());	// connect host to its default switch
 
 		log.info(String.format("Shortest path table for Host %s: %s.",
@@ -450,67 +484,5 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		modules.add(ILinkDiscoveryService.class);
 		modules.add(IDeviceService.class);
         return modules;
-	}
-
-	/**
-	 * this class uses bellman-ford for shortest path in directed graph,
-	 * which is implemented under guide of
-	 *      - https://algs4.cs.princeton.edu/44sp/
-	 */
-	static class ShortestPathCalculator {
-
-		private static final int WEIGHT = 1;
-
-		private final Map<Long, Integer> distTo;
-		private final Map<Long, Integer> edgeTo;
-
-		public ShortestPathCalculator() {
-			distTo = new ConcurrentHashMap<Long, Integer>();
-			edgeTo = new ConcurrentHashMap<Long, Integer>();
-		}
-
-		public synchronized Map<Long, Integer> getShortestPaths(IOFSwitch srcSwitch, Collection<Link> links, Map<Long, IOFSwitch> switches) {
-			Set<Long> onQueue = new HashSet<Long>();
-			Queue<Long> queue = new ArrayDeque<Long>();
-			Map<Long, ArrayList<Link>> network = new HashMap<Long, ArrayList<Link>>();
-
-			// build network topology
-			for (Link link: links) {
-				if (!network.containsKey(link.getSrc())) network.put(link.getSrc(), new ArrayList<Link>());
-				if (!network.containsKey(link.getDst())) network.put(link.getDst(), new ArrayList<Link>());
-				network.get(link.getSrc()).add(link);
-				network.get(link.getDst()).add(link);
-			}
-
-			// init distTo
-			for (long sId: switches.keySet()) {
-				distTo.put(sId, Integer.MAX_VALUE - 1);
-			}
-			distTo.put(srcSwitch.getId(), 0);
-
-			queue.offer(srcSwitch.getId());
-			onQueue.add(srcSwitch.getId());
-
-			while (!queue.isEmpty()) {
-				long src = queue.poll();
-				onQueue.remove(src);
-
-				// relax
-				for (Link link: network.get(src)) {
-					long dst = link.getDst();
-					if (distTo.get(dst) > distTo.get(src) + WEIGHT) {
-						distTo.put(dst, distTo.get(src) + WEIGHT);
-						edgeTo.put(dst, link.getDstPort());
-
-						if (!onQueue.contains(dst)) {
-							onQueue.add(dst);
-							queue.offer(dst);
-						}
-					}
-				}
-			}
-
-			return edgeTo;
-		}
 	}
 }
