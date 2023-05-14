@@ -280,16 +280,15 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 
 				OFInstruction defaultInstruction = new OFInstructionGotoTable(l3RoutingApp.getTable());
 
-				List<OFAction> actions = new ArrayList<OFAction>() {{
-					add(new OFActionSetField(
-							OFOXMFieldType.ETH_DST,
-							getHostMACAddress(loadBalancer.getNextHostIP())
-					));
-					add(new OFActionSetField(
-									OFOXMFieldType.IPV4_DST,
-									loadBalancer.getNextHostIP()
-					));
-				}};
+				List<OFAction> actions = new ArrayList<OFAction>();
+				actions.add(new OFActionSetField(
+						OFOXMFieldType.ETH_DST,
+						getHostMACAddress(loadBalancer.getNextHostIP())
+				));
+				actions.add(new OFActionSetField(
+						OFOXMFieldType.IPV4_DST,
+						loadBalancer.getNextHostIP()
+				));
 
 				OFInstruction instruction = new OFInstructionApplyActions(actions);
 
@@ -312,16 +311,14 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 						.setTransportSource(tcpPkt.getDestinationPort())
 						.setTransportDestination(tcpPkt.getSourcePort());
 
-				actions = new ArrayList<OFAction>() {{
-					add(new OFActionSetField(
-							OFOXMFieldType.IPV4_SRC,
-							ipPkt.getDestinationAddress()
-					));
-					add(new OFActionSetField(
-							OFOXMFieldType.IPV4_SRC,
-							loadBalancer.getVirtualMAC()
-					));
-				}};
+				actions.add(new OFActionSetField(
+						OFOXMFieldType.IPV4_SRC,
+						ipPkt.getDestinationAddress()
+				));
+				actions.add(new OFActionSetField(
+						OFOXMFieldType.IPV4_SRC,
+						loadBalancer.getVirtualMAC()
+				));
 
 				instruction = new OFInstructionApplyActions(actions);
 
