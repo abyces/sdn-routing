@@ -271,12 +271,20 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 	 */
 	public void updateRoutingTable(Host host) {
 		if (!host.isAttachedToSwitch() || host.getIPv4Address() == null) {
+			log.info(String.format("Host %s is not attached or doesnt get IP addr. [in updateRoutingTable()]",
+					host.getName()));
 			return ;
 		}
+
+		log.info(String.format("Host %s, ip: %s, sw: %d, rules begin to updated.",
+				host.getName(), host.getIPv4Address(), host.getSwitch().getId()));
 
 		ShortestPathCalculator spCalculator = new ShortestPathCalculator();
 		Map<Long, Integer> shortestPaths = spCalculator.getShortestPaths(host.getSwitch(), getLinks(), getSwitches());
 		shortestPaths.put(host.getSwitch().getId(), host.getPort());	// connect host to its default switch
+
+		log.info(String.format("Shortest path table for Host %s: %s.",
+				host.getName(), shortestPaths.toString()));
 
 		OFMatch match = new OFMatch()
 				.setDataLayerType(Ethernet.TYPE_IPv4)
@@ -286,6 +294,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 			if (!shortestPaths.containsKey(sw.getId())) {
 				continue;
 			}
+
+			log.info(String.format("Adding sw %d rule for Host %s...", sw.getId(), host.getName()));
 
 			OFAction action = new OFActionOutput(shortestPaths.get(sw.getId()));
 			OFInstruction instruction = new OFInstructionApplyActions(Arrays.asList(action));
@@ -297,6 +307,9 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 					Arrays.asList(instruction)
 			);
 		}
+
+		log.info(String.format("Host %s rules update complete.",
+				host.getName()));
 	}
 
 	/**
@@ -304,6 +317,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 	 */
 	private void clearRules(Host host) {
 		if (!host.isAttachedToSwitch() || host.getIPv4Address() == null) {
+			log.info(String.format("Host %s is not attached or doesnt get IP addr. [in clearRules()]",
+					host.getName()));
 			return ;
 		}
 
@@ -314,6 +329,9 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		for (IOFSwitch sw: getSwitches().values()) {
 			SwitchCommands.removeRules(sw, table, match);
 		}
+
+		log.info(String.format("Host %s rules are cleared",
+				host.getName()));
 	}
 
 	/**
@@ -469,6 +487,9 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 				distTo.put(sId, Integer.MAX_VALUE - 1);
 			}
 			distTo.put(srcSwitch.getId(), 0);
+
+			queue.offer(srcSwitch.getId());
+			onQueue.add(srcSwitch.getId());
 
 			while (!queue.isEmpty()) {
 				long src = queue.poll();

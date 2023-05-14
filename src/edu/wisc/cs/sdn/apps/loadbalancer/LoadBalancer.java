@@ -44,7 +44,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	public static final String MODULE_NAME = LoadBalancer.class.getSimpleName();
 	
 	private static final byte TCP_FLAG_SYN = 0x02;
-	
+	private static final byte TCP_FLAG_RST = 0x04;
 	private static final short IDLE_TIMEOUT = 20;
 	
 	// Interface to the logging system
@@ -227,6 +227,10 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			int vIP = IPv4.toIPv4Address(arpPkt.getTargetProtocolAddress());
 			LoadBalancerInstance loadBalancer = this.instances.get(vIP);
 
+			log.info(String.format("Received ARP request for virtual IP %s from %s",
+					IPv4.fromIPv4Address(vIP),
+					MACAddress.valueOf(arpPkt.getSenderHardwareAddress())));
+
 			if (loadBalancer == null) {
 				return Command.CONTINUE;
 			}
@@ -248,6 +252,10 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					.setSourceMACAddress(loadBalancer.getVirtualMAC())
 					.setPayload(replyARP);
 
+			log.info(String.format("Sending ARP reply %s -> %s",
+					IPv4.fromIPv4Address(vIP),
+					MACAddress.valueOf(loadBalancer.getVirtualMAC())));
+
 			SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), replyEther);
 
 		} else if (ethernetType == Ethernet.TYPE_IPv4) {
@@ -257,73 +265,80 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			}
 
 			TCP tcpPkt = (TCP) ipPkt.getPayload();
-			if (tcpPkt.getFlags() != TCP_FLAG_SYN) {
-				return Command.CONTINUE;
+			if (tcpPkt.getFlags() == TCP_FLAG_SYN) {
+				log.info("TCP_FLAG_SYN Rule");
+				LoadBalancerInstance loadBalancer = this.instances.get(ipPkt.getDestinationAddress());
+
+				// client to server
+				OFMatch match = new OFMatch()
+						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
+						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
+						.setNetworkSource(ipPkt.getSourceAddress())
+						.setNetworkDestination(ipPkt.getDestinationAddress())
+						.setTransportSource(tcpPkt.getSourcePort())
+						.setTransportDestination(tcpPkt.getDestinationPort());
+
+				OFInstruction defaultInstruction = new OFInstructionGotoTable(l3RoutingApp.getTable());
+
+				OFInstruction instruction = new OFInstructionApplyActions(Arrays.asList(
+						new OFActionSetField(
+								OFOXMFieldType.IPV4_DST,
+								loadBalancer.getNextHostIP()
+						),
+						new OFActionSetField(
+								OFOXMFieldType.ETH_DST,
+								getHostMACAddress(loadBalancer.getNextHostIP())
+						)
+				));
+
+				SwitchCommands.installRule(
+						sw,
+						table,
+						SwitchCommands.MAX_PRIORITY,
+						match,
+						Arrays.asList(instruction, defaultInstruction),
+						SwitchCommands.NO_TIMEOUT,
+						IDLE_TIMEOUT
+				);
+
+				// server to client
+				match = new OFMatch()
+						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
+						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
+						.setNetworkSource(loadBalancer.getNextHostIP())
+						.setNetworkDestination(ipPkt.getSourceAddress())
+						.setTransportSource(tcpPkt.getDestinationPort())
+						.setTransportDestination(tcpPkt.getSourcePort());
+
+				instruction = new OFInstructionApplyActions(Arrays.asList(
+						new OFActionSetField(
+								OFOXMFieldType.IPV4_SRC,
+								ipPkt.getDestinationAddress()
+						),
+						new OFActionSetField(
+								OFOXMFieldType.IPV4_SRC,
+								loadBalancer.getVirtualMAC()
+						)
+				));
+
+				SwitchCommands.installRule(
+						sw,
+						table,
+						SwitchCommands.MAX_PRIORITY,
+						match,
+						Arrays.asList(instruction, defaultInstruction),
+						SwitchCommands.NO_TIMEOUT,
+						IDLE_TIMEOUT
+				);
+			} else {
+				log.info("Other TCP Rule");
+				ipPkt.setFlags(TCP_FLAG_RST);
+				ipPkt.setDestinationAddress(ipPkt.getSourceAddress());
+				ipPkt.setSourceAddress(ipPkt.getDestinationAddress());
+				ethPkt.setDestinationMACAddress(ethPkt.getSourceMACAddress());
+				ethPkt.setSourceMACAddress(ethPkt.getSourceMACAddress());
+				SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), ethPkt);
 			}
-
-			LoadBalancerInstance loadBalancer = this.instances.get(ipPkt.getDestinationAddress());
-
-			// client to server
-			OFMatch match = new OFMatch()
-					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
-					.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
-					.setNetworkSource(ipPkt.getSourceAddress())
-					.setNetworkDestination(ipPkt.getDestinationAddress())
-					.setTransportSource(tcpPkt.getSourcePort())
-					.setTransportDestination(tcpPkt.getDestinationPort());
-
-			OFInstruction defaultInstruction = new OFInstructionGotoTable(l3RoutingApp.getTable());
-
-			OFInstruction instruction = new OFInstructionApplyActions(Arrays.asList(
-					new OFActionSetField(
-							OFOXMFieldType.IPV4_DST,
-							loadBalancer.getNextHostIP()
-					),
-					new OFActionSetField(
-							OFOXMFieldType.ETH_DST,
-							getHostMACAddress(loadBalancer.getNextHostIP())
-					)
-			));
-
-			SwitchCommands.installRule(
-					sw,
-					table,
-					SwitchCommands.MAX_PRIORITY,
-					match,
-					Arrays.asList(instruction, defaultInstruction),
-					SwitchCommands.NO_TIMEOUT,
-					IDLE_TIMEOUT
-			);
-
-			// server to client
-			match = new OFMatch()
-					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
-					.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
-					.setNetworkSource(loadBalancer.getNextHostIP())
-					.setNetworkDestination(ipPkt.getSourceAddress())
-					.setTransportSource(tcpPkt.getDestinationPort())
-					.setTransportDestination(tcpPkt.getSourcePort());
-
-			instruction = new OFInstructionApplyActions(Arrays.asList(
-					new OFActionSetField(
-							OFOXMFieldType.IPV4_SRC,
-							ipPkt.getDestinationAddress()
-					),
-					new OFActionSetField(
-							OFOXMFieldType.IPV4_SRC,
-							loadBalancer.getVirtualMAC()
-					)
-			));
-
-			SwitchCommands.installRule(
-					sw,
-					table,
-					SwitchCommands.MAX_PRIORITY,
-					match,
-					Arrays.asList(instruction, defaultInstruction),
-					SwitchCommands.NO_TIMEOUT,
-					IDLE_TIMEOUT
-			);
 		}
 
 		/*********************************************************************/
