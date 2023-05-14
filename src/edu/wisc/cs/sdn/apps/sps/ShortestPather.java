@@ -6,10 +6,12 @@ import net.floodlightcontroller.core.IOFSwitch;
 import net.floodlightcontroller.routing.Link;
 
 /**
+ * Moved to ShortestPathSwitching.java
  * this class uses bellman-ford for shortest path in directed graph,
  * which is implemented under guide of
  *      - https://algs4.cs.princeton.edu/44sp/
  */
+@Deprecated
 public class ShortestPather {
 
     private static final double WEIGHT = 1.0;

@@ -5,8 +5,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import edu.wisc.cs.sdn.apps.util.SwitchCommands;
 import net.floodlightcontroller.packet.Ethernet;
-import net.floodlightcontroller.util.MACAddress;
-import org.apache.derby.iapi.util.ByteArray;
 import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
@@ -51,7 +49,7 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
     private IDeviceService deviceProv;
     
     // Switch table in which rules should be installed
-    private byte table;
+    public static byte table;
     
     // Map of hosts to devices
     private Map<IDevice,Host> knownHosts;
@@ -139,7 +137,7 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 			
 			/*****************************************************************/
 			/* TODO: Update routing: add rules to route to new host          */
-			updateRoutingTable();
+			updateRoutingTable(host);
 			/*****************************************************************/
 		}
 	}
@@ -163,7 +161,7 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: remove rules to route to host               */
-		updateRoutingTable();
+		clearRules(host);
 		/*********************************************************************/
 	}
 
@@ -191,7 +189,8 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change rules to route to host               */
-		updateRoutingTable();
+		clearRules(host);
+		updateRoutingTable(host);
 		/*********************************************************************/
 	}
 	
@@ -207,7 +206,10 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		updateRoutingTable();
+		for (Host host : getHosts()) {
+			clearRules(host);
+			updateRoutingTable(host);
+		}
 		/*********************************************************************/
 	}
 
@@ -223,7 +225,10 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		updateRoutingTable();
+		for (Host host : getHosts()) {
+			clearRules(host);
+			updateRoutingTable(host);
+		}
 		/*********************************************************************/
 	}
 
@@ -254,85 +259,60 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		
 		/*********************************************************************/
 		/* TODO: Update routing: change routing rules for all hosts          */
-		updateRoutingTable();
-		/*********************************************************************/
-	}
-
-	/**
-	 * connect the host to its default switch
-	 * @param host
-	 */
-	private void updateDefaultSwitch(Host host) {
-		if (!host.isAttachedToSwitch() || host.getPort() == null) {
-			return;
+		for (Host host : getHosts()) {
+			clearRules(host);
+			updateRoutingTable(host);
 		}
-
-		OFMatch match = new OFMatch()
-				.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
-				.setDataLayerDestination(MACAddress.valueOf(host.getMACAddress()).toString());
-
-		OFAction action = new OFActionOutput(host.getPort());
-		OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
-
-		SwitchCommands.installRule(
-				host.getSwitch(),
-				table,
-				SwitchCommands.DEFAULT_PRIORITY,
-				match,
-				List.of(instruction)
-		);
+		/*********************************************************************/
 	}
 
 	/**
 	 * Update routing table when changes happen
 	 */
-	public void updateRoutingTable() {
-		clearRules();
+	public void updateRoutingTable(Host host) {
+		if (!host.isAttachedToSwitch() || host.getIPv4Address() == null) {
+			return ;
+		}
 
-		for (Host srcHost: getHosts()) {
-			if (!srcHost.isAttachedToSwitch()) {
+		ShortestPathCalculator spCalculator = new ShortestPathCalculator();
+		Map<Long, Integer> shortestPaths = spCalculator.getShortestPaths(host.getSwitch(), getLinks(), getSwitches());
+		shortestPaths.put(host.getSwitch().getId(), host.getPort());	// connect host to its default switch
+
+		OFMatch match = new OFMatch()
+				.setDataLayerType(Ethernet.TYPE_IPv4)
+				.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, host.getIPv4Address());
+
+		for (IOFSwitch sw: getSwitches().values()) {
+			if (!shortestPaths.containsKey(sw.getId())) {
 				continue;
 			}
 
-			updateDefaultSwitch(srcHost);
-
-			ShortestPather pather = new ShortestPather();
-			pather.runBellmanFord(srcHost.getSwitch(), getLinks(), getSwitches());
-
-			for (Host dstHost: getHosts()) {
-				if (!dstHost.isAttachedToSwitch() || srcHost.equals(dstHost)) {
-					continue;
-				}
-
-				OFMatch match = new OFMatch()
-						.setDataLayerType(Ethernet.TYPE_IPv4)
-						.setDataLayerDestination(MACAddress.valueOf(dstHost.getMACAddress()).toString());
-				List<Link> shortestPaths = pather.getShortestPathToDstHost(dstHost.getSwitch().getId());
-
-				for (Link link: shortestPaths) {
-					IOFSwitch sw = getSwitches().get(link.getSrc());
-					OFAction action = new OFActionOutput(link.getSrcPort());
-					OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
-					SwitchCommands.installRule(
-							sw,
-							table,
-							SwitchCommands.DEFAULT_PRIORITY,
-							match,
-							List.of(instruction)
-					);
-				}
-
-			}
-
+			OFAction action = new OFActionOutput(shortestPaths.get(sw.getId()));
+			OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
+			SwitchCommands.installRule(
+					sw,
+					table,
+					SwitchCommands.DEFAULT_PRIORITY,
+					match,
+					List.of(instruction)
+			);
 		}
 	}
 
 	/**
 	 * clear all rules in switches.
 	 */
-	private void clearRules() {
+	private void clearRules(Host host) {
+		if (!host.isAttachedToSwitch() || host.getIPv4Address() == null) {
+			return ;
+		}
+
+		OFMatch match = new OFMatch()
+				.setDataLayerType(Ethernet.TYPE_IPv4)
+				.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, host.getIPv4Address());
+
 		for (IOFSwitch sw: getSwitches().values()) {
-			sw.clearAllFlowMods();
+			SwitchCommands.removeRules(sw, table, match);
 		}
 	}
 
@@ -452,5 +432,63 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		modules.add(ILinkDiscoveryService.class);
 		modules.add(IDeviceService.class);
         return modules;
+	}
+
+	/**
+	 * this class uses bellman-ford for shortest path in directed graph,
+	 * which is implemented under guide of
+	 *      - https://algs4.cs.princeton.edu/44sp/
+	 */
+	static class ShortestPathCalculator {
+
+		private static final int WEIGHT = 1;
+
+		private final Map<Long, Integer> distTo;
+		private final Map<Long, Integer> edgeTo;
+		private final Set<Long> onQueue;
+		private final Queue<Long> queue;
+
+		public ShortestPathCalculator() {
+			distTo = new ConcurrentHashMap<>();
+			edgeTo = new ConcurrentHashMap<>();
+			onQueue = new HashSet<>();
+			queue = new ArrayDeque<>();
+		}
+
+		public synchronized Map<Long, Integer> getShortestPaths(IOFSwitch srcSwitch, Collection<Link> links, Map<Long, IOFSwitch> switches) {
+			Map<Long, ArrayList<Link>> network = new HashMap<>();
+			for (Link link: links) {
+				network.computeIfAbsent(link.getSrc(), (k -> new ArrayList<>())).add(link);
+				network.computeIfAbsent(link.getDst(), (k -> new ArrayList<>())).add(link);
+			}
+
+			for (long sId: switches.keySet()) {
+				distTo.put(sId, Integer.MAX_VALUE - 1);
+			}
+			distTo.put(srcSwitch.getId(), 0);
+
+			while (!queue.isEmpty()) {
+				long currSID = queue.poll();
+				onQueue.remove(currSID);
+				relax(network, currSID);
+			}
+
+			return edgeTo;
+		}
+
+		private synchronized void relax(Map<Long, ArrayList<Link>> network, long src) {
+			for (Link link: network.get(src)) {
+				long dst = link.getDst();
+				if (distTo.get(dst) > distTo.get(src) + WEIGHT) {
+					distTo.put(dst, distTo.get(src) + WEIGHT);
+					edgeTo.put(dst, link.getDstPort());
+
+					if (!onQueue.contains(dst)) {
+						onQueue.add(dst);
+						queue.offer(dst);
+					}
+				}
+			}
+		}
 	}
 }

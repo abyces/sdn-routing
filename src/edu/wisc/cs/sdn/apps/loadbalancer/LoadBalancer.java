@@ -3,6 +3,7 @@ package edu.wisc.cs.sdn.apps.loadbalancer;
 import java.util.*;
 
 import edu.wisc.cs.sdn.apps.l3routing.L3Routing;
+import edu.wisc.cs.sdn.apps.sps.ShortestPathSwitching;
 import edu.wisc.cs.sdn.apps.util.SwitchCommands;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.IPv4;
@@ -158,22 +159,27 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		}
 
 		// (2): arp to controller
-		OFMatch arpMatch = new OFMatch()
-				.setDataLayerType(OFMatch.ETH_TYPE_ARP);
-		OFAction arpAction = new OFActionOutput(OFPort.OFPP_CONTROLLER);
-		OFInstruction arpInstruction = new OFInstructionApplyActions(List.of(arpAction));
-		SwitchCommands.installRule(
-				sw,
-				table,
-				SwitchCommands.DEFAULT_PRIORITY,
-				arpMatch,
-				List.of(arpInstruction)
-		);
+		for (int vIP: instances.keySet()) {
+			OFMatch arpMatch = new OFMatch()
+					.setDataLayerType(OFMatch.ETH_TYPE_ARP)
+					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP)
+					.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
+
+			OFAction arpAction = new OFActionOutput(OFPort.OFPP_CONTROLLER);
+			OFInstruction arpInstruction = new OFInstructionApplyActions(List.of(arpAction));
+			SwitchCommands.installRule(
+					sw,
+					table,
+					SwitchCommands.DEFAULT_PRIORITY,
+					arpMatch,
+					List.of(arpInstruction)
+			);
+		}
 
 		// (3). other to next rule table
 		OFMatch otherMatch = new OFMatch()
 				.setDataLayerType(OFMatch.ETH_TYPE_IPV4);
-		OFInstruction otherInstruction = new OFInstructionGotoTable(l3RoutingApp.getTable());
+		OFInstruction otherInstruction = new OFInstructionGotoTable(ShortestPathSwitching.table);
 		SwitchCommands.installRule(
 				sw,
 				table,
@@ -216,6 +222,10 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		short ethernetType = ethPkt.getEtherType();
 		if (ethernetType == Ethernet.TYPE_ARP) {
 			ARP arpPkt = (ARP) ethPkt.getPayload();
+			if (arpPkt.getOpCode() != ARP.OP_REQUEST || arpPkt.getProtocolType() != ARP.PROTO_TYPE_IP) {
+				return Command.CONTINUE;
+			}
+
 			int vIP = IPv4.toIPv4Address(arpPkt.getTargetProtocolAddress());
 			LoadBalancerInstance loadBalancer = this.instances.get(vIP);
 
@@ -234,13 +244,13 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					.setTargetHardwareAddress(arpPkt.getSenderHardwareAddress())
 					.setTargetProtocolAddress(arpPkt.getSenderProtocolAddress());
 
-			Ethernet ethernet = (Ethernet) new Ethernet()
+			Ethernet replyEther = (Ethernet) new Ethernet()
 					.setEtherType(Ethernet.TYPE_ARP)
 					.setDestinationMACAddress(ethPkt.getSourceMACAddress())
 					.setSourceMACAddress(loadBalancer.getVirtualMAC())
 					.setPayload(replyARP);
 
-			SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), ethernet);
+			SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), replyEther);
 
 		} else if (ethernetType == Ethernet.TYPE_IPv4) {
 			IPv4 ipPkt = (IPv4) ethPkt.getPayload();
@@ -255,11 +265,12 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 
 			LoadBalancerInstance loadBalancer = this.instances.get(ipPkt.getDestinationAddress());
 
+			// client to server
 			OFMatch match = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
+					.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
 					.setNetworkSource(ipPkt.getSourceAddress())
 					.setNetworkDestination(ipPkt.getDestinationAddress())
-					.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
 					.setTransportSource(tcpPkt.getSourcePort())
 					.setTransportDestination(tcpPkt.getDestinationPort());
 
@@ -286,11 +297,12 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					IDLE_TIMEOUT
 			);
 
+			// server to client
 			match = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
+					.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
 					.setNetworkSource(loadBalancer.getNextHostIP())
 					.setNetworkDestination(ipPkt.getSourceAddress())
-					.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
 					.setTransportSource(tcpPkt.getDestinationPort())
 					.setTransportDestination(tcpPkt.getSourcePort());
 
