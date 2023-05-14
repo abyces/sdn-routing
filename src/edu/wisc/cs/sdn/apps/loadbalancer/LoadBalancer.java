@@ -148,13 +148,13 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
 
 			OFAction vipAction = new OFActionOutput(OFPort.OFPP_CONTROLLER);
-			OFInstruction vipInstruction = new OFInstructionApplyActions(List.of(vipAction));
+			OFInstruction vipInstruction = new OFInstructionApplyActions(Arrays.asList(vipAction));
 			SwitchCommands.installRule(
 					sw,
 					table,
 					SwitchCommands.DEFAULT_PRIORITY,
 					vipMatch,
-					List.of(vipInstruction)
+					Arrays.asList(vipInstruction)
 			);
 
 			// (2): arp to controller
@@ -164,13 +164,13 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
 
 			OFAction arpAction = new OFActionOutput(OFPort.OFPP_CONTROLLER);
-			OFInstruction arpInstruction = new OFInstructionApplyActions(List.of(arpAction));
+			OFInstruction arpInstruction = new OFInstructionApplyActions(Arrays.asList(arpAction));
 			SwitchCommands.installRule(
 					sw,
 					table,
 					SwitchCommands.DEFAULT_PRIORITY,
 					arpMatch,
-					List.of(arpInstruction)
+					Arrays.asList(arpInstruction)
 			);
 		}
 
@@ -183,7 +183,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				table,
 				SwitchCommands.DEFAULT_PRIORITY,
 				otherMatch,
-				List.of(otherInstruction)
+				Arrays.asList(otherInstruction)
 		);
 
 		/*********************************************************************/
@@ -274,7 +274,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 
 			OFInstruction defaultInstruction = new OFInstructionGotoTable(l3RoutingApp.getTable());
 
-			OFInstruction instruction = new OFInstructionApplyActions(List.of(
+			OFInstruction instruction = new OFInstructionApplyActions(Arrays.asList(
 					new OFActionSetField(
 							OFOXMFieldType.IPV4_DST,
 							loadBalancer.getNextHostIP()
@@ -290,7 +290,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					table,
 					SwitchCommands.MAX_PRIORITY,
 					match,
-					List.of(instruction, defaultInstruction),
+					Arrays.asList(instruction, defaultInstruction),
 					SwitchCommands.NO_TIMEOUT,
 					IDLE_TIMEOUT
 			);
@@ -304,7 +304,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					.setTransportSource(tcpPkt.getDestinationPort())
 					.setTransportDestination(tcpPkt.getSourcePort());
 
-			instruction = new OFInstructionApplyActions(List.of(
+			instruction = new OFInstructionApplyActions(Arrays.asList(
 					new OFActionSetField(
 							OFOXMFieldType.IPV4_SRC,
 							ipPkt.getDestinationAddress()
@@ -320,7 +320,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					table,
 					SwitchCommands.MAX_PRIORITY,
 					match,
-					List.of(instruction, defaultInstruction),
+					Arrays.asList(instruction, defaultInstruction),
 					SwitchCommands.NO_TIMEOUT,
 					IDLE_TIMEOUT
 			);

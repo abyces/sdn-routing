@@ -288,13 +288,13 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 			}
 
 			OFAction action = new OFActionOutput(shortestPaths.get(sw.getId()));
-			OFInstruction instruction = new OFInstructionApplyActions(List.of(action));
+			OFInstruction instruction = new OFInstructionApplyActions(Arrays.asList(action));
 			SwitchCommands.installRule(
 					sw,
 					table,
 					SwitchCommands.DEFAULT_PRIORITY,
 					match,
-					List.of(instruction)
+					Arrays.asList(instruction)
 			);
 		}
 	}
@@ -447,19 +447,21 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 		private final Map<Long, Integer> edgeTo;
 
 		public ShortestPathCalculator() {
-			distTo = new ConcurrentHashMap<>();
-			edgeTo = new ConcurrentHashMap<>();
+			distTo = new ConcurrentHashMap<Long, Integer>();
+			edgeTo = new ConcurrentHashMap<Long, Integer>();
 		}
 
 		public synchronized Map<Long, Integer> getShortestPaths(IOFSwitch srcSwitch, Collection<Link> links, Map<Long, IOFSwitch> switches) {
-			Set<Long> onQueue = new HashSet<>();
-			Queue<Long> queue = new ArrayDeque<>();
-			Map<Long, ArrayList<Link>> network = new HashMap<>();
+			Set<Long> onQueue = new HashSet<Long>();
+			Queue<Long> queue = new ArrayDeque<Long>();
+			Map<Long, ArrayList<Link>> network = new HashMap<Long, ArrayList<Link>>();
 
 			// build network topology
 			for (Link link: links) {
-				network.computeIfAbsent(link.getSrc(), (k -> new ArrayList<>())).add(link);
-				network.computeIfAbsent(link.getDst(), (k -> new ArrayList<>())).add(link);
+				if (!network.containsKey(link.getSrc())) network.put(link.getSrc(), new ArrayList<Link>());
+				if (!network.containsKey(link.getDst())) network.put(link.getDst(), new ArrayList<Link>());
+				network.get(link.getSrc()).add(link);
+				network.get(link.getDst()).add(link);
 			}
 
 			// init distTo
