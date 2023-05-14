@@ -445,50 +445,49 @@ public class ShortestPathSwitching implements IFloodlightModule, IOFSwitchListen
 
 		private final Map<Long, Integer> distTo;
 		private final Map<Long, Integer> edgeTo;
-		private final Set<Long> onQueue;
-		private final Queue<Long> queue;
 
 		public ShortestPathCalculator() {
 			distTo = new ConcurrentHashMap<>();
 			edgeTo = new ConcurrentHashMap<>();
-			onQueue = new HashSet<>();
-			queue = new ArrayDeque<>();
 		}
 
 		public synchronized Map<Long, Integer> getShortestPaths(IOFSwitch srcSwitch, Collection<Link> links, Map<Long, IOFSwitch> switches) {
+			Set<Long> onQueue = new HashSet<>();
+			Queue<Long> queue = new ArrayDeque<>();
 			Map<Long, ArrayList<Link>> network = new HashMap<>();
+
+			// build network topology
 			for (Link link: links) {
 				network.computeIfAbsent(link.getSrc(), (k -> new ArrayList<>())).add(link);
 				network.computeIfAbsent(link.getDst(), (k -> new ArrayList<>())).add(link);
 			}
 
+			// init distTo
 			for (long sId: switches.keySet()) {
 				distTo.put(sId, Integer.MAX_VALUE - 1);
 			}
 			distTo.put(srcSwitch.getId(), 0);
 
 			while (!queue.isEmpty()) {
-				long currSID = queue.poll();
-				onQueue.remove(currSID);
-				relax(network, currSID);
-			}
+				long src = queue.poll();
+				onQueue.remove(src);
 
-			return edgeTo;
-		}
+				// relax
+				for (Link link: network.get(src)) {
+					long dst = link.getDst();
+					if (distTo.get(dst) > distTo.get(src) + WEIGHT) {
+						distTo.put(dst, distTo.get(src) + WEIGHT);
+						edgeTo.put(dst, link.getDstPort());
 
-		private synchronized void relax(Map<Long, ArrayList<Link>> network, long src) {
-			for (Link link: network.get(src)) {
-				long dst = link.getDst();
-				if (distTo.get(dst) > distTo.get(src) + WEIGHT) {
-					distTo.put(dst, distTo.get(src) + WEIGHT);
-					edgeTo.put(dst, link.getDstPort());
-
-					if (!onQueue.contains(dst)) {
-						onQueue.add(dst);
-						queue.offer(dst);
+						if (!onQueue.contains(dst)) {
+							onQueue.add(dst);
+							queue.offer(dst);
+						}
 					}
 				}
 			}
+
+			return edgeTo;
 		}
 	}
 }

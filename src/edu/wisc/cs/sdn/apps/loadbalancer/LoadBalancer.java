@@ -140,8 +140,8 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		/*       (2) ARP packets to the controller, and                      */
 		/*       (3) all other packets to the next rule table in the switch  */
 
-		// (1): virtual loadbalancer to controller
 		for (int vIP: instances.keySet()) {
+			// (1): virtual loadbalancer to controller
 			OFMatch vipMatch = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP)
@@ -156,10 +156,8 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					vipMatch,
 					List.of(vipInstruction)
 			);
-		}
 
-		// (2): arp to controller
-		for (int vIP: instances.keySet()) {
+			// (2): arp to controller
 			OFMatch arpMatch = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_ARP)
 					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP)
