@@ -65,6 +65,9 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
     // Set of virtual IPs and the load balancer instances they correspond with
     private Map<Integer,LoadBalancerInstance> instances;
 
+	// control the log for debug
+	private static final boolean isLog = false;
+
     /**
      * Loads dependencies and initializes data structures.
      */
@@ -141,7 +144,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		/*       (3) all other packets to the next rule table in the switch  */
 
 		for (int vIP: instances.keySet()) {
-			// (1): virtual loadbalancer to controller
+			// (1): packets from new connections to each virtual loadbalancer ip to controller
 			OFMatch vipMatch = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP)
@@ -227,9 +230,10 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			int vIP = IPv4.toIPv4Address(arpPkt.getTargetProtocolAddress());
 			LoadBalancerInstance loadBalancer = this.instances.get(vIP);
 
-			log.info(String.format("Received ARP request for virtual IP %s from %s",
-					IPv4.fromIPv4Address(vIP),
-					MACAddress.valueOf(arpPkt.getSenderHardwareAddress())));
+			if (isLog)
+				log.info(String.format("Received ARP request for virtual IP %s from %s",
+						IPv4.fromIPv4Address(vIP),
+						MACAddress.valueOf(arpPkt.getSenderHardwareAddress())));
 
 			if (loadBalancer == null) {
 				return Command.CONTINUE;
@@ -252,9 +256,10 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					.setSourceMACAddress(loadBalancer.getVirtualMAC())
 					.setPayload(replyARP);
 
-			log.info(String.format("Sending ARP reply %s -> %s",
-					IPv4.fromIPv4Address(vIP),
-					MACAddress.valueOf(loadBalancer.getVirtualMAC())));
+			if (isLog)
+				log.info(String.format("Sending ARP reply %s -> %s",
+						IPv4.fromIPv4Address(vIP),
+						MACAddress.valueOf(loadBalancer.getVirtualMAC())));
 
 			SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), replyEther);
 
@@ -266,7 +271,9 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 
 			TCP tcpPkt = (TCP) ipPkt.getPayload();
 			if (tcpPkt.getFlags() == TCP_FLAG_SYN) {
-				log.info("TCP_FLAG_SYN Rule");
+				if (isLog)
+					log.info("TCP_FLAG_SYN Rule");
+
 				LoadBalancerInstance loadBalancer = this.instances.get(ipPkt.getDestinationAddress());
 
 				// client to server
@@ -332,7 +339,9 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 						IDLE_TIMEOUT
 				);
 			} else {
-				log.info("Other TCP Rule");
+				if (isLog)
+					log.info("Other TCP Rule");
+
 				ipPkt.setFlags(TCP_FLAG_RST);
 				ipPkt.setDestinationAddress(ipPkt.getSourceAddress());
 				ipPkt.setSourceAddress(ipPkt.getDestinationAddress());
