@@ -3,6 +3,7 @@ package edu.wisc.cs.sdn.apps.loadbalancer;
 import java.util.*;
 
 import edu.wisc.cs.sdn.apps.l3routing.L3Routing;
+import edu.wisc.cs.sdn.apps.sps.InterfaceShortestPathSwitching;
 import edu.wisc.cs.sdn.apps.sps.ShortestPathSwitching;
 import edu.wisc.cs.sdn.apps.util.SwitchCommands;
 import net.floodlightcontroller.packet.ARP;
@@ -56,8 +57,8 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
     // Interface to device manager service
     private IDeviceService deviceProv;
     
-    // Interface to L3Routing application
-    private IL3Routing l3RoutingApp;
+    // Interface to ShortestPathSwitching application
+    private InterfaceShortestPathSwitching spsApp;
     
     // Switch table in which rules should be installed
     private byte table;
@@ -101,7 +102,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		this.floodlightProv = context.getServiceImpl(
 				IFloodlightProviderService.class);
         this.deviceProv = context.getServiceImpl(IDeviceService.class);
-        this.l3RoutingApp = context.getServiceImpl(IL3Routing.class);
+        this.spsApp = context.getServiceImpl(InterfaceShortestPathSwitching.class);
         
         /*********************************************************************/
         /* TODO: Initialize other class variables, if necessary              */
@@ -285,7 +286,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 						.setTransportSource(tcpPkt.getSourcePort())
 						.setTransportDestination(tcpPkt.getDestinationPort());
 
-				OFInstruction defaultInstruction = new OFInstructionGotoTable(l3RoutingApp.getTable());
+				OFInstruction defaultInstruction = new OFInstructionGotoTable(ShortestPathSwitching.table);
 
 				List<OFAction> actions = new ArrayList<OFAction>();
 				actions.add(new OFActionSetField(
