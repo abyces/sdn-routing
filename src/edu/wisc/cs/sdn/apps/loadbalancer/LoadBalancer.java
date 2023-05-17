@@ -148,8 +148,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			// (1): packets from new connections to each virtual loadbalancer ip to controller
 			OFMatch vipMatch = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
-					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP)
-					.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
+					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP);
 
 			OFAction vipAction = new OFActionOutput(OFPort.OFPP_CONTROLLER);
 			OFInstruction vipInstruction = new OFInstructionApplyActions(Arrays.asList(vipAction));
@@ -164,8 +163,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			// (2): arp to controller
 			OFMatch arpMatch = new OFMatch()
 					.setDataLayerType(OFMatch.ETH_TYPE_ARP)
-					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP)
-					.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
+					.setNetworkDestination(OFMatch.ETH_TYPE_IPV4, vIP);
 
 			OFAction arpAction = new OFActionOutput(OFPort.OFPP_CONTROLLER);
 			OFInstruction arpInstruction = new OFInstructionApplyActions(Arrays.asList(arpAction));
@@ -303,7 +301,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				SwitchCommands.installRule(
 						sw,
 						table,
-						SwitchCommands.MAX_PRIORITY,
+						(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
 						match,
 						Arrays.asList(instruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
@@ -324,7 +322,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 						ipPkt.getDestinationAddress()
 				));
 				actions.add(new OFActionSetField(
-						OFOXMFieldType.IPV4_SRC,
+						OFOXMFieldType.ETH_SRC,
 						loadBalancer.getVirtualMAC()
 				));
 
@@ -333,7 +331,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				SwitchCommands.installRule(
 						sw,
 						table,
-						SwitchCommands.MAX_PRIORITY,
+						(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
 						match,
 						Arrays.asList(instruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
