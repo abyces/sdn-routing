@@ -276,7 +276,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				LoadBalancerInstance loadBalancer = instances.get(ipPkt.getDestinationAddress());
 
 				// client to server
-				OFMatch match = new OFMatch()
+				OFMatch csMatch = new OFMatch()
 						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
 						.setNetworkSource(ipPkt.getSourceAddress())
@@ -286,30 +286,30 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 
 				OFInstruction defaultInstruction = new OFInstructionGotoTable(ShortestPathSwitching.table);
 
-				List<OFAction> actions = new ArrayList<OFAction>();
-				actions.add(new OFActionSetField(
+				List<OFAction> csActions = new ArrayList<OFAction>();
+				csActions.add(new OFActionSetField(
 						OFOXMFieldType.ETH_DST,
 						getHostMACAddress(loadBalancer.getNextHostIP())
 				));
-				actions.add(new OFActionSetField(
+				csActions.add(new OFActionSetField(
 						OFOXMFieldType.IPV4_DST,
 						loadBalancer.getNextHostIP()
 				));
 
-				OFInstruction instruction = new OFInstructionApplyActions(actions);
+				OFInstruction csInstruction = new OFInstructionApplyActions(csActions);
 
 				SwitchCommands.installRule(
 						sw,
 						table,
 						(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
-						match,
-						Arrays.asList(instruction, defaultInstruction),
+						csMatch,
+						Arrays.asList(csInstruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
 						IDLE_TIMEOUT
 				);
 
 				// server to client
-				match = new OFMatch()
+				OFMatch scMatch = new OFMatch()
 						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
 						.setNetworkSource(loadBalancer.getNextHostIP())
@@ -317,24 +317,24 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 						.setTransportSource(tcpPkt.getDestinationPort())
 						.setTransportDestination(tcpPkt.getSourcePort());
 
-				actions = new ArrayList<OFAction>();
-				actions.add(new OFActionSetField(
+				List<OFAction> scActions = new ArrayList<OFAction>();
+				scActions.add(new OFActionSetField(
 						OFOXMFieldType.IPV4_SRC,
 						ipPkt.getDestinationAddress()
 				));
-				actions.add(new OFActionSetField(
+				scActions.add(new OFActionSetField(
 						OFOXMFieldType.ETH_SRC,
 						instances.get(ipPkt.getDestinationAddress()).getVirtualMAC()
 				));
 
-				instruction = new OFInstructionApplyActions(actions);
+				OFInstruction scInstruction = new OFInstructionApplyActions(scActions);
 
 				SwitchCommands.installRule(
 						sw,
 						table,
 						(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
-						match,
-						Arrays.asList(instruction, defaultInstruction),
+						scMatch,
+						Arrays.asList(scInstruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
 						IDLE_TIMEOUT
 				);
