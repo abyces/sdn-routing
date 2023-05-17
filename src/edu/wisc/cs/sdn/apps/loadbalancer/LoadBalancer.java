@@ -273,7 +273,11 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				if (isLog)
 					log.info("TCP_FLAG_SYN Rule");
 
+
 				LoadBalancerInstance loadBalancer = instances.get(ipPkt.getDestinationAddress());
+				int hostIP = loadBalancer.getNextHostIP();
+				byte[] hostMAC = this.getHostMACAddress(hostIP);
+
 
 				// client to server
 				OFMatch csMatch = new OFMatch()
@@ -289,11 +293,11 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				List<OFAction> csActions = new ArrayList<OFAction>();
 				csActions.add(new OFActionSetField(
 						OFOXMFieldType.ETH_DST,
-						getHostMACAddress(loadBalancer.getNextHostIP())
+						hostMAC
 				));
 				csActions.add(new OFActionSetField(
 						OFOXMFieldType.IPV4_DST,
-						loadBalancer.getNextHostIP()
+						hostIP
 				));
 
 				OFInstruction csInstruction = new OFInstructionApplyActions(csActions);
@@ -301,7 +305,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				SwitchCommands.installRule(
 						sw,
 						table,
-						(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
+						(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
 						csMatch,
 						Arrays.asList(csInstruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
@@ -312,7 +316,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				OFMatch scMatch = new OFMatch()
 						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
-						.setNetworkSource(loadBalancer.getNextHostIP())
+						.setNetworkSource(hostIP)
 						.setNetworkDestination(ipPkt.getSourceAddress())
 						.setTransportSource(tcpPkt.getDestinationPort())
 						.setTransportDestination(tcpPkt.getSourcePort());
@@ -332,7 +336,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				SwitchCommands.installRule(
 						sw,
 						table,
-						(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
+						(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
 						scMatch,
 						Arrays.asList(scInstruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
