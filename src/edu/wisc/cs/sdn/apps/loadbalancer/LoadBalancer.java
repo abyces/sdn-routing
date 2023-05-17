@@ -222,6 +222,8 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		short ethernetType = ethPkt.getEtherType();
 		if (ethernetType == Ethernet.TYPE_ARP) {
 			ARP arpPkt = (ARP) ethPkt.getPayload();
+
+			// return if not an ARP for IPv4 addr
 			if (arpPkt.getOpCode() != ARP.OP_REQUEST || arpPkt.getProtocolType() != ARP.PROTO_TYPE_IP) {
 				return Command.CONTINUE;
 			}
@@ -270,16 +272,15 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 
 			TCP tcpPkt = (TCP) ipPkt.getPayload();
 			if (tcpPkt.getFlags() == TCP_FLAG_SYN) {
+				// for TCP SYN
 				if (isLog)
 					log.info("TCP_FLAG_SYN Rule");
-
 
 				LoadBalancerInstance loadBalancer = instances.get(ipPkt.getDestinationAddress());
 				int hostIP = loadBalancer.getNextHostIP();
 				byte[] hostMAC = this.getHostMACAddress(hostIP);
 
-
-				// client to server
+				// client to servers
 				OFMatch csMatch = new OFMatch()
 						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
@@ -305,14 +306,14 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				SwitchCommands.installRule(
 						sw,
 						table,
-						(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
+						(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
 						csMatch,
 						Arrays.asList(csInstruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
 						IDLE_TIMEOUT
 				);
 
-				// server to client
+				// servers to client
 				OFMatch scMatch = new OFMatch()
 						.setDataLayerType(OFMatch.ETH_TYPE_IPV4)
 						.setNetworkProtocol(OFMatch.IP_PROTO_TCP)
@@ -336,13 +337,14 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				SwitchCommands.installRule(
 						sw,
 						table,
-						(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
+						(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
 						scMatch,
 						Arrays.asList(scInstruction, defaultInstruction),
 						SwitchCommands.NO_TIMEOUT,
 						IDLE_TIMEOUT
 				);
 			} else {
+				// for other TCPs
 				if (isLog)
 					log.info("Other TCP Rule");
 
